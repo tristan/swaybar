@@ -6,8 +6,8 @@ use wayland_client::{Display, GlobalManager};
 use wayland_client::protocol::wl_seat;
 
 use crate::swaybar::Block;
-use self::generated::client::org_kde_kwin_idle::OrgKdeKwinIdle;
-use self::generated::client::org_kde_kwin_idle_timeout::Event;
+use self::generated::client::ext_idle_notifier_v1::ExtIdleNotifierV1;
+use self::generated::client::ext_idle_notification_v1::Event;
 
 const IDLE_PAUSE_TIME: Duration = Duration::from_secs(30);
 const IDLE_RESET_TIME: Duration = Duration::from_secs(300);
@@ -43,9 +43,8 @@ pub fn start(
         });
     }
 
-    // wayland/sway idle detection
+    // wayland/sway idle detection using https://wayland.app/protocols/ext-idle-notify-v1
     {
-        let s = s.clone();
         spawn(move || {
             let display = Display::connect_to_env().unwrap();
             let mut event_queue = display.create_event_queue();
@@ -55,40 +54,41 @@ pub fn start(
             event_queue.sync_roundtrip(&mut (), |_, _, _| unreachable!()).unwrap();
 
             let seat = globals.instantiate_exact::<wl_seat::WlSeat>(1).unwrap();
-            let idle = globals.instantiate_exact::<OrgKdeKwinIdle>(1).unwrap();
+            let idle = globals.instantiate_exact::<ExtIdleNotifierV1>(1).unwrap();
 
-            let pause = idle.get_idle_timeout(&seat, IDLE_PAUSE_TIME.as_millis() as _);
+            let pause = idle.get_idle_notification(IDLE_PAUSE_TIME.as_millis() as _, &seat);
             {
                 let s = s.clone();
                 pause.quick_assign(move |_timeout, event, _| {
                     match event {
-                        Event::Idle => {
+                        Event::Idled => {
+                            eprintln!(">>>> IDLE");
                             s.send(PauzaEvent::PauseTimer).unwrap();
                         },
                         Event::Resumed => {
+                            eprintln!(">>>> RESUMED");
                             s.send(PauzaEvent::ResumeTimer).unwrap();
                         }
                     }
                 })
             }
-            let short_break = idle.get_idle_timeout(&seat, SHORT_BREAK_DURATION.as_millis() as _);
+            let short_break = idle.get_idle_notification(SHORT_BREAK_DURATION.as_millis() as _, &seat);
             {
                 let s = s.clone();
                 short_break.quick_assign(move |_timeout, event, _| {
                     match event {
-                        Event::Idle => {
+                        Event::Idled => {
                             s.send(PauzaEvent::ShortBreakTaken).unwrap();
                         },
                         Event::Resumed => {}
                     }
                 })
             }
-            let reset = idle.get_idle_timeout(&seat, IDLE_RESET_TIME.as_millis() as _);
+            let reset = idle.get_idle_notification(IDLE_RESET_TIME.as_millis() as _, &seat);
             {
-                let s = s.clone();
                 reset.quick_assign(move |_timeout, event, _| {
                     match event {
-                        Event::Idle => {
+                        Event::Idled => {
                             s.send(PauzaEvent::ResetTimer).unwrap();
                         },
                         Event::Resumed => {}
@@ -123,6 +123,11 @@ pub fn start(
                         format!(" {:02}:{:02} ", minutes, seconds)
                     };
                     let background = if elapsed > BREAK_TIME {
+                        if !short_break_taken {
+                            // prevent short break reset from changing the color
+                            // during a main break
+                            short_break_taken = true;
+                        }
                         Some("FF0000".to_string())
                     } else if !short_break_taken && elapsed > SHORT_BREAK_TIME {
                         Some("FF4500".to_string())

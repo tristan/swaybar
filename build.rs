@@ -7,7 +7,7 @@ use wayland_scanner::{Side, generate_code};
 
 // Location of the xml file, relative to the `Cargo.toml`
 fn main() {
-    let protocol_file = "./idle.xml";
+    let protocol_file = "./ext-idle-notify-v1.xml";
 
     // Target directory for the generate files
     let out_dir_str = var("OUT_DIR").unwrap();

@@ -82,13 +82,9 @@ pub fn start(
     };
 
     let bat0_capacity = bat0.join("capacity");
-    let bat0_capacity = move || -> String {
+    let bat0_capacity = move || -> Option<String> {
         let bat0_capacity = bat0_capacity.as_path();
-        if let Ok(val) = read(bat0_capacity) {
-            val
-        } else {
-            "".to_string()
-        }
+        read(bat0_capacity).ok()
     };
 
     spawn(move || {
@@ -96,20 +92,29 @@ pub fn start(
             let mut full_text = String::new();
             full_text.push(' ');
             if is_plugged_in() {
-                full_text.push_str("🔌");
+                full_text.push('🔌');
             }
             let bat0_status = bat0_status();
             full_text.push_str(bat0_status.emoji());
+            let mut background = None;
             match bat0_status {
                 BatteryStatus::Charging | BatteryStatus::Discharging => {
-                    full_text.push_str(&bat0_capacity());
-                    full_text.push('%');
+                    if let Some(capacity) = bat0_capacity() {
+                        full_text.push_str(&capacity);
+                        full_text.push('%');
+                        if let Ok(capacity) = capacity.parse::<i32>() {
+                            if capacity <= 15 && matches!(bat0_status, BatteryStatus::Discharging) {
+                                background = Some("FF4500".to_string())
+                            }
+                        }
+                    }
                 },
                 _ => {}
-            }
+            };
             full_text.push(' ');
             sender.send((offset, Block {
                 full_text,
+                background,
                 name: Some(name.clone()),
                 instance: Some(instance.clone()),
                 .. Default::default()

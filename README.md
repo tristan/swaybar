@@ -9,6 +9,7 @@ Implements the [swaybar protocol](https://www.mankier.com/7/swaybar-protocol) fo
  - work time / break reminder : gently reminds me to stand up and get away from the screen after a set period of time (uses the wayland protocol `org_kde_kwin_idle` to get the idle timeouts).
  - battery usage
  - current date/time
+ - connected wifi
 
 ## will this work for anyone other than me?
 
